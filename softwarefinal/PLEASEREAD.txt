@@ -1,0 +1,11 @@
+Software progress as of April 13, 2025:
+
+BLOCK I: Main.py - executable file to call on all modules [NOT ACCOMPLISHED]
+BLOCK II: Aphasialogic.py - module for autocompletion logic, text to speech, speech to text
+  a. Excel file? - Not yet transferred
+  b. Additional notes? - Must run on bigbigsus venv using the following commands (assuming input after RPi login):
+      <1> cd ~/AmarachiBot/
+      <2> source bigbigsus/bin/activate
+      <3> cd ~/AmarachiBot/autocompletion_files
+      <4> python3 [INSERT NAME OF THE APHASIA LOGIC CODE].py 2>/dev/null
+BLOCK III: Emoanim.py - module for emotion detection, startup and shutdown animation
