@@ -1,0 +1,173 @@
+# In the terminal, type: pip install SpeechRecognition pyttsx3 nltk google-generativeai python-dotenv openpyxl
+# Do not forget to include the .env file and the "SpeechData.xlsx" file before running the code
+
+
+import speech_recognition as sr
+import pyttsx3
+import nltk
+import string
+import google.generativeai as genai
+import os
+import openpyxl
+import time
+from dotenv import load_dotenv
+from datetime import datetime
+from nltk.corpus import stopwords
+nltk.download('punkt_tab')
+
+# Load environment variables for Gemini API
+load_dotenv()
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Download necessary NLTK data
+try:
+    nltk.data.find('corpora/stopwords.zip')
+    nltk.data.find('tokenizers/punkt.zip')
+except LookupError:
+    nltk.download('stopwords')
+    nltk.download('punkt')
+
+# Initialize Speech Recognizer and Text-to-Speech Engine
+recognizer = sr.Recognizer()
+tts_engine = pyttsx3.init()
+
+# Load or create Excel file
+try:
+    workbook = openpyxl.load_workbook('SpeechData.xlsx')
+    sheet = workbook.active
+except FileNotFoundError:
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(["Speech Timestamp", "Correction Timestamp", "Recognized Speech", "Completed Sentence", "Total Processing Time (s)", "API Processing Time (s)", "Speech Processing Time (s)"])
+
+# Initialize Gemini Model
+model = genai.GenerativeModel("gemini-2.0-flash")
+
+# Function: Speech-to-Text
+def speech_to_text():
+    with sr.Microphone() as source:
+        print("I'm listening...")
+        recognizer.adjust_for_ambient_noise(source)
+
+        try:
+            audio = recognizer.listen(source, timeout=5)
+            text = recognizer.recognize_google(audio).lower()
+            print("You said:", text)
+            return text
+        except sr.UnknownValueError:
+            print("Sorry, could not understand the audio.")
+        except sr.RequestError:
+            print("Could not request results, check your internet connection.")
+        except sr.WaitTimeoutError:
+            print("No speech detected, stopping...")
+
+    return ""
+
+# Function: Preprocess Text (Remove Stopwords, Punctuation)
+def preprocess_text(text):
+    text = text.lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    words = nltk.word_tokenize(text)
+
+    try:
+        stop_words = set(stopwords.words('english'))
+        filtered_words = [word for word in words if word not in stop_words]
+    except LookupError:
+        return text  # Return unfiltered text if stopwords fail to load
+
+    return ' '.join(filtered_words)
+
+# Function: Autocomplete Text using Gemini API
+def autofill_sentence(broken_sentence):
+    if not broken_sentence:
+        return "No input detected.", 0.0
+
+    try:
+        prompt =(
+            f"You are a language assistant trained to reconstruct incomplete sentences while preserving their original meaning. "
+            f"Your objective is to aid aphasia patients in their daily conversations by fixing their sentences."
+            f"Your task is to correct and fill in the missing words to make the sentence grammatically and semantically correct, "
+            f"without changing its intent. Provide only the corrected sentence without additional explanations:\n\n"
+            f"Broken Sentence: {broken_sentence}\n\n"
+        )
+
+        gemini_start_time = time.perf_counter()
+        response = model.generate_content(prompt)
+        gemini_end_time = time.perf_counter()
+
+        gemini_processing_time = round(gemini_end_time - gemini_start_time, 6)
+
+        completed_sentence = response.candidates[0].content.parts[0].text.strip()
+        return completed_sentence if completed_sentence else broken_sentence, gemini_processing_time
+
+    except Exception as e:
+        print(f"Error with Gemini API: {e}")
+        return broken_sentence, 0.0
+
+# Function: Convert Text-to-Speech
+def text_to_speech(text):
+    if text:
+        try:
+            tts_engine.say(text)
+            tts_engine.runAndWait()
+        except Exception as e:
+            print(f"Text-to-Speech error: {e}")
+
+# Main Function: Handles Full Workflow
+def main():
+    print("Loading...")
+
+    update_made = False
+    
+    with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source)
+    
+    try:
+        while True:
+            speech_start_time = time.perf_counter()
+            spoken_text = speech_to_text()
+            speech_end_time = time.perf_counter()
+            
+            speech_processing_time = round(speech_end_time - speech_start_time, 6)
+
+            if not spoken_text:
+                continue  # If no speech is detected, retry
+            
+            if spoken_text == "zero":
+                print("Exiting program...")
+                break
+
+            speech_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Process speech text
+            processed_text = preprocess_text(spoken_text)
+
+            # Get corrected sentence from Gemini
+            corrected_sentence, gemini_processing_time = autofill_sentence(processed_text)
+            correction_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # Calculate processing times
+            total_processing_time = round(speech_processing_time + gemini_processing_time, 6)
+
+            print("Corrected Sentence:", corrected_sentence)
+            print(f"Gemini Processing Time: {gemini_processing_time} seconds")
+            print(f"Speech Processing Time: {speech_processing_time} seconds")
+            print(f"Total Processing Time: {total_processing_time} seconds")
+
+            # Convert corrected sentence to speech
+            text_to_speech(corrected_sentence)
+
+            # Save to Excel
+            sheet.append([speech_timestamp, correction_timestamp, spoken_text, corrected_sentence, total_processing_time, gemini_processing_time, speech_processing_time])
+            update_made = True
+
+    except KeyboardInterrupt:
+        print("Program interrupted. Exiting...")
+
+    finally:
+        if update_made:
+            workbook.save('SpeechData.xlsx')
+            print("Data saved to SpeechData.xlsx.")
+
+if __name__ == "__main__":
+    main()
