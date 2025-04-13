@@ -7,5 +7,5 @@ BLOCK II: Aphasialogic.py - module for autocompletion logic, text to speech, spe
       <1> cd ~/AmarachiBot/
       <2> source bigbigsus/bin/activate
       <3> cd ~/AmarachiBot/autocompletion_files
-      <4> python3 [INSERT NAME OF THE APHASIA LOGIC CODE].py 2>/dev/null
+      <4> python3 majortest.py 2>/dev/null
 BLOCK III: Emoanim.py - module for emotion detection, startup and shutdown animation
